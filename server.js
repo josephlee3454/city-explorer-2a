@@ -5,6 +5,11 @@
 //My server
 const express = require('express'); //it allows access to express
 const app = express();// allows you to put methoids in express
+
+//pg
+const pg = require('pg');
+const client = new pg.Client(process.env.DATABASE_URL);
+//superagent
 const superagent =require('superagent');
 require('dotenv').config();//grabs varibles from hiding spot from env file
 
@@ -101,6 +106,12 @@ app.get('*',(request,response)=>{
   response.status(404).send('sorry something is wrong');
   })
   // tells you its lisenting to the port 
+  client.connect()
+  .then(() => {
   app.listen(PORT, () => {
     console.log(`listening on ${PORT}`);
   })
+}).catch(err => {
+  console.log('hey your misssing stuff', err);
+  response.status(500).send(err);
+})
