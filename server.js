@@ -10,7 +10,7 @@ const app = express();// allows you to put methoids in express
 const pg = require('pg');
 const client = new pg.Client(process.env.DATABASE_URL);
 //superagent
-const superagent =require('superagent');
+const superagent = require('superagent');
 require('dotenv').config();//grabs varibles from hiding spot from env file
 
 //the underpaid secuirty gaurd
@@ -20,29 +20,49 @@ app.use(cors());// invokes cors
 const PORT = process.env.PORT || 3001; // defines port as either whats inside .env or 3001
 
 
+
+client.on('error', err => errorHandler(err));
+
+// turn on the server
+client.connect()
+  .then(()=>{
+    app.listen(PORT, () => {
+      console.log(`listening on ${PORT}`);
+    });
+  });
+
 //location
 
 //application gets location and sends a request to server
 app.get('/location', (request, response) => {
 
     let city = request.query.city;//grab city data from qury
-    let key = process.env.GEOCODE_API_KEY;
-    console.log('city', city);
-    let url = `https://us1.locationiq.com/v1/search.php?key=${key}&q=${city}&format=json&limit=1`;
-    superagent.get(url)
-        .then(results => {
-          let location = new Location(results.body[0]);
-          console.log('locationData', location);
-          response.status(200).send(location);
-        }).catch(err => {// if it fails the error test it sets it below
-    response.status(500).send(err);// sends error 500 
-    console.error('you messed up');
-  })
-})
+    let sql = 'SELECT * FROM locations WHERE search_query=$1;';
+    let safevalues = [city];
+    let key = process.env.GEOCODE_API_KEY;//creates the a key for using the api in the .env 
+    client.query(sql,safevalues)
+      .then(results => {
+        if(results.rowCount.lenght>0){
+          console.log('city in db:', city);
+          response.send(results.rows[0]);
+          }else {
+            console.log('did not find your citry:', city)
+            let url = `https://us1.locationiq.com/v1/search.php?key=${key}&q=${city}&format=json&limit=1`;
+            superagent.get(url)
+            .then(results => {
+              let location = new Location(results.body[0], city);
+              response.status(200).send(location);
+            }).catch(err => errorHandler(err, response));
+            console.error('you messed up')
+
+          }
+  });
+});
 ///weather
 app.get('/weather', (request, response) =>{
   console.log(request.query)
   // get data from the darksky file
+  let weather = [];
   let lat = request.query.latitude;
   let lon = request.query.longitude;
   let key = process.env.WEATHER_API_KEY;
@@ -52,15 +72,14 @@ app.get('/weather', (request, response) =>{
   .then(results => {
     console.log(results);
     let wData = results.body.data;
-    let wArr = wData.map(day =>{
-      return new Weather(day);
+    wData.map(day =>{
+      let newDay = new Weather(day);
+      weather.push(newDay)
      })
     response.status(200).send(wArr);
-  }).catch(err=>{
+  }).catch(err=> errorHandler(err, response));
     console.log('its messed up', err)
-    response.send(err)
-  })
-})
+  });
 app.get('/trails', (request, response) => {
   let {latitude,longitude} = request.query;
   let trailKey =process.env.TRAILS_API_KEY;
