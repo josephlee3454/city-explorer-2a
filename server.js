@@ -3,19 +3,21 @@
 //libraries
 
 //My server
+require('dotenv').config();//grabs varibles from hiding spot from env file
 const express = require('express'); //it allows access to express
 const app = express();// allows you to put methoids in express
+//the underpaid secuirty gaurd
+const cors = require('cors');// allows you to allow access to different sources with some security
 
 //pg
 const pg = require('pg');
+console.log(process.env.DATABASE_URL);
 const client = new pg.Client(process.env.DATABASE_URL);
 //superagent
 const superagent = require('superagent');
-require('dotenv').config();//grabs varibles from hiding spot from env file
 
-//the underpaid secuirty gaurd
-const cors = require('cors');// allows you to allow access to different sources with some security
 app.use(cors());// invokes cors
+
 
 const PORT = process.env.PORT || 3001; // defines port as either whats inside .env or 3001
 
@@ -23,13 +25,8 @@ const PORT = process.env.PORT || 3001; // defines port as either whats inside .e
 
 client.on('error', err => errorHandler(err));
 
-// turn on the server
-client.connect()
-  .then(()=>{
-    app.listen(PORT, () => {
-      console.log(`listening on ${PORT}`);
-    });
-  });
+
+
 
 //location
 
@@ -72,31 +69,73 @@ app.get('/weather', (request, response) =>{
   .then(results => {
     console.log(results);
     let wData = results.body.data;
-    wData.map(day =>{
-      let newDay = new Weather(day);
-      weather.push(newDay)
+    let wArr = wData.map(day =>{
+      return new Weather(day);
+      
      })
     response.status(200).send(wArr);
-  }).catch(err=> errorHandler(err, response));
-    console.log('its messed up', err)
+  })
+  // .catch(err=> errorHandler(err, response));
+  //   console.log('its messed up', err)
   });
+  //trails
 app.get('/trails', (request, response) => {
   let {latitude,longitude} = request.query;
   let trailKey =process.env.TRAILS_API_KEY;
   let urlTrail = `https://www.hikingproject.com/data/get-trails?lat=${latitude}&lon=${longitude}&maxDistance=10&key=${trailKey}`;
- 
   superagent.get(urlTrail)
     .then(results => {
-      let trail = results.body.trails;
-      const dataObj = trail.map(trail => new Trail(trail));
+      const dataObj = results.body.trails.map(trail => new Trail(trail));
       response.status(200).send(dataObj);
-    }).catch(err=>{
-      console.log('its messed up', err)
-      response.send(err)
     });
 });
+//movies
+app.get('/movies', (request, response) => {
+  let location = request.query.search_query;
+  let movieKey = process.env.MOVIE_API_KEY
+  console.log(request.search_query);
+  let url = `https://api.themoviedb.org/3/search/movie?api_key=${movieKey}&language=en-US&query=${location}&page=1`;
+  superagent.get(url)
+  .then(results => {
+  console.log('movie results via superagent ', results.body.results);
+  let movieData = results.body;
+  let movieResults = movieData.map((obj) => (new Movie (obj)));
+
+  response.status(200).send(movieResults);
+  })
+  // .catch(err => {
+  //   console.error(err);
+  //   response.status(500).send(err);
+  // }).catch(err => errorHandler(err, response));
+});
+app.get('/yelp', (request,response)=>{
+  let city = request.query.city;
+  let url = `https://api.yelp.com/v3/businesses/search?location=${city}`;
+  superagent.get(url)
+  .set({"Authorization": `Bearer ${process.env.YELP_API_KEY}`
+})
+  .then(results => {
+    let newYelp = results.body.businesses.map(obj => new Yelp(obj));
+    
+    response.status(200).send(newYelp);
+  })
+  // .catch(err => errorhandler(err, response));
+});
+
+
+  
 
 //constructor function
+//movie constructor
+function Movie(obj){
+  this.title = obj.title;
+  this.overview = obj.overview;
+  this.average_votes = obj.vote_average;
+  this.total_votes = obj.vote_count;
+  this.image_url = `https://image.tmdb.org/t/p/w300_and_h450_bestv2${obj.backdrop_path}`;
+  this.popularity = obj.popularity;
+  this.released_on = obj.release_date;
+}
 function Location(obj, city){
   this.search_query = city;
   this.formatted_query = obj.display_name;
@@ -118,19 +157,31 @@ function Trail(obj){
   this.conditions = obj.conditionStatus;
   this.condition_date = obj.conditionDate.slice(0,10);
   this.condition_time = obj.conditionDate.slice(11,19);
+  }
+
+function Yelp(obj){
+  this.name = obj.name;
+  this.image_url = obj.image_url;
+  this.price = obj.price;
+  this.rating = obj.rating;
+  this.url = obj.url;
+}
+
+function errorHandler (err, response){
+  console.error(err);
+  if(response){
+    response.status(500).send('Sorry, I can\'t help with that.');
+  }
 }
 
 //if response is a 404 messeage then the log will say 
 app.get('*',(request,response)=>{
   response.status(404).send('sorry something is wrong');
   })
-  // tells you its lisenting to the port 
-  client.connect()
-  .then(() => {
-  app.listen(PORT, () => {
-    console.log(`listening on ${PORT}`);
-  })
-}).catch(err => {
-  console.log('hey your misssing stuff', err);
-  response.status(500).send(err);
-})
+//turn on server
+client.connect()
+  .then(()=> {
+    app.listen(PORT, () => {
+      console.log(`listening on ${PORT}`);
+    });
+  });
